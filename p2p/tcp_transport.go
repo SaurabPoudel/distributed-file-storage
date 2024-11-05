@@ -48,7 +48,7 @@ func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 }
 
 // Consume implements the Transport interface, which will return read only channel
-// for reading the incoming message recieved from another peer in the networks
+// for reading the incoming message received from another peer in the networks
 func (t *TCPTransport) Consume() <-chan RPC {
 	return t.rpcch
 }
@@ -82,19 +82,27 @@ type Temp struct{}
 
 func (t *TCPTransport) handleConn(conn net.Conn) {
 
+	var err error
+	defer func() {
+		fmt.Printf("dropping peer connection %s", err)
+		conn.Close()
+	}()
 	peer := NewTCPPeer(conn, true)
 
 	if err := t.HandshakeFunc(peer); err != nil {
-		conn.Close()
-		fmt.Printf("TCP handshake error: %s \n", err)
 		return
+	}
+
+	if t.OnPeer != nil {
+		if err = t.OnPeer(peer); err != nil {
+			return
+		}
 	}
 
 	rpc := RPC{}
 	for {
 		if err := t.Decoder.Decode(conn, &rpc); err != nil {
-			fmt.Printf("TCP error: %s\n", err)
-			continue
+			return
 		}
 		rpc.From = conn.RemoteAddr()
 		t.rpcch <- rpc
